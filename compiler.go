@@ -28,7 +28,7 @@ func (c Compiler) compileInstruction(insI ssa.Instruction) {
 	}
 }
 
-func (c Compiler) compileFunction(fn *ssa.Function) {
+func (c Compiler) compileFunctionDecl(fn *ssa.Function) {
 	funcClose := c.writeFuncDecl(fn)
 
 	i := 0
@@ -44,13 +44,22 @@ func (c Compiler) compileFunction(fn *ssa.Function) {
 	funcClose()
 }
 
+func (c Compiler) compileGlobalDecl(gv *ssa.Global) {
+	//println(gv.Type().Underlying().String())
+	c.writeVarDecl(gv.Name(), gv.Type(), nil)
+}
+
 func (c Compiler) Compile(prog *ssa.Program) {
-	funcClose := c.writeGlobalWrap()
+	funcClose := c.writeUniversalWrap()
 
 	for _, pkg := range prog.AllPackages() {
-		if pkg.Object.Name() == "main" {
-			mainFunc := pkg.Func("main")
-			c.compileFunction(mainFunc)
+		for _, memI := range pkg.Members {
+			switch mem := memI.(type) {
+			case *ssa.Function:
+				c.compileFunctionDecl(mem)
+			case *ssa.Global:
+				c.compileGlobalDecl(mem)
+			}
 		}
 	}
 

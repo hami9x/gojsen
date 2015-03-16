@@ -16,8 +16,6 @@ func main() {
 		panic(err)
 	}
 
-	defer outw.Close()
-
 	var conf loader.Config
 	af, err := conf.ParseFile(testFile, nil)
 	if err != nil {
@@ -40,5 +38,5 @@ func main() {
 	compiler := &Compiler{codeWriter}
 	compiler.Compile(prog)
 
-	ow.Close()
+	ow.Close(testOut, outw)
 }

@@ -1,6 +1,11 @@
 package main
 
-import "io"
+import (
+	"fmt"
+	"io"
+	"log"
+	"os/exec"
+)
 
 type outputWriter struct {
 	w        io.Writer
@@ -31,7 +36,15 @@ func (ow outputWriter) Start() {
 	}()
 }
 
-func (ow outputWriter) Close() {
+func (ow outputWriter) Close(testFile string, foutw io.Closer) {
 	close(ow.codeChan)
 	<-ow.finished
+	foutw.Close()
+
+	cmd := exec.Command("uglifyjs", "-b", "-nm", "-ns", "--no-dead-code", testFile)
+	b, err := cmd.CombinedOutput()
+	fmt.Printf("%v\n", string(b))
+	if err != nil {
+		log.Fatal(err)
+	}
 }

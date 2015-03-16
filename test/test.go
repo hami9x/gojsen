@@ -1,6 +1,14 @@
 package main
 
+var v = f()
+var b bool
+
+func f() int {
+	return 1
+}
+
 func main() {
-	a := 5
-	println(a)
+	b = false
+	a := 0
+	println(a + v)
 }

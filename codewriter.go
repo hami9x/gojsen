@@ -25,11 +25,11 @@ func (cw codeWriter) writeAssignment(lhs string, rhs string) {
 	cw.w <- fmt.Sprintf("%v = %v;", lhs, rhs)
 }
 
-func valueCode(g *valueCodegen, v ssa.Value) string {
+func valueCode(cg valueCG, v ssa.Value) string {
 	name, isLiteral := valueName(v.Name())
-	vstr := g.value(name, v.Type())
+	vstr := name
 	if !isLiteral {
-		return g.coerce(vstr)
+		return cg.coerce(vstr)
 	}
 
 	return vstr
@@ -40,20 +40,6 @@ func valueName(name string) (string, bool) {
 	return spl[0], len(spl) > 1
 }
 
-func (cw codeWriter) codeGenerator(typ types.Type) *valueCodegen {
-	switch t := typ.(type) {
-	case *types.Basic:
-		switch t.Kind() {
-		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
-			return intCodegen
-		case types.String:
-			return stringCodegen
-		}
-	}
-
-	panic("Unhandled")
-}
-
 func (cw codeWriter) writeFuncDecl(fn *ssa.Function) func() {
 	cw.w <- fmt.Sprintf("function %v(%v) {",
 		fn.Name(),
@@ -61,7 +47,7 @@ func (cw codeWriter) writeFuncDecl(fn *ssa.Function) func() {
 
 	for _, param := range fn.Params {
 		pn := param.Name()
-		cg := cw.codeGenerator(param.Type())
+		cg := getCG(param.Type())
 		cw.writeAssignment(pn, cg.coerce(pn))
 	}
 
@@ -73,7 +59,7 @@ func (cw codeWriter) writeBC() {
 }
 
 func (cw codeWriter) writeValue(v ssa.Value) {
-	cw.w <- valueCode(cw.codeGenerator(v.Type()), v)
+	cw.w <- valueCode(getCG(v.Type()), v)
 }
 
 func (cw codeWriter) writeArgs(args []ssa.Value) {
@@ -85,12 +71,23 @@ func (cw codeWriter) writeArgs(args []ssa.Value) {
 func (cw codeWriter) writePrintln(args []ssa.Value) {
 	cw.w <- "console.log("
 	cw.writeArgs(args)
-	cw.w <- ")"
+	cw.w <- ");"
 }
 
-func (cw codeWriter) writeGlobalWrap() func() {
+func (cw codeWriter) writeUniversalWrap() func() {
 	cw.w <- "(function() {"
 	return func() {
-		cw.w <- "})()"
+		cw.w <- "\nmain()})()"
 	}
+}
+
+func (cw codeWriter) writeVarDecl(name string, typ types.Type, v ssa.Value) {
+	cw.w <- fmt.Sprintf("var %v = ", name)
+	vg := getCG(typ)
+	if v != nil {
+		cw.w <- valueCode(getCG(typ), v)
+	} else {
+		cw.w <- vg.initialValue()
+	}
+	cw.w <- ";"
 }
