@@ -71,20 +71,25 @@ func (cw codeWriter) writeBC() {
 	cw.w <- "}"
 }
 
-func (cw codeWriter) writeArgs(args []ssa.Value) {
+func (cw codeWriter) writeArgs(args []ssa.Value, coerce bool) {
 	for _, arg := range args {
-		cw.w <- cw.value(arg)
+		if coerce {
+			cw.w <- cw.coercedValue(arg)
+		} else {
+			cw.w <- cw.value(arg)
+		}
 	}
 }
 
 func (cw codeWriter) writePrintln(args []ssa.Value) {
 	cw.w <- "console.log("
-	cw.writeArgs(args)
+	cw.writeArgs(args, false)
 	cw.w <- ");"
 }
 
-func (cw codeWriter) writeUniversalWrap() func() {
+func (cw codeWriter) writePrelude() func() {
 	cw.w <- "(function() {"
+	cw.w <- Prelude
 	return func() {
 		cw.w <- "\ninit(); main()})()"
 	}
@@ -105,7 +110,38 @@ func (cw codeWriter) writeVarDecl(name, value string) {
 
 func (cw codeWriter) pointerDeref(pointerValue string, elemType types.Type) string {
 	deref := fmt.Sprintf("%v[0]", pointerValue)
+	if elemType == nil {
+		return deref
+	}
+
 	return getCG(elemType).coerce(deref)
+}
+
+func (cw codeWriter) writeReturn(returns []ssa.Value) {
+	if len(returns) == 0 {
+		return
+	}
+
+	for i, v := range returns {
+		cw.w <- fmt.Sprintf("%v[%v] = %v;", TupleVar, i, cw.coercedValue(v))
+	}
+	cw.w <- fmt.Sprintf("return %v", TupleVar)
+}
+
+func (cw codeWriter) writeFunctionCall(name string, args []ssa.Value) {
+	cw.w <- name + "("
+	cw.writeArgs(args, true)
+	cw.w <- ")"
+}
+
+func (cw codeWriter) writeExtract(name string, index int, stackVar string) {
+	cw.writeVarDecl(stackVar, fmt.Sprintf("%v[%v]", name, index))
+}
+
+func (cw codeWriter) writeStore(addr, value ssa.Value) {
+	cw.writeAssignment(
+		cw.pointerDeref(addr.Name(), nil),
+		cw.coercedValue(value))
 }
 
 func (cw codeWriter) write(code string) {

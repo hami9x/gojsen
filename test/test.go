@@ -1,15 +1,13 @@
 package main
 
-var v = f()
-var b bool
+var v int
 
-func f() int {
-	return 1
+func f(a int) (int, int) {
+	return a, 2
 }
 
 func main() {
-	b = false
-	z := v
-	a := 0
+	v = 5
+	z, a := f(v)
 	println(a + v + z)
 }

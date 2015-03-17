@@ -12,22 +12,26 @@ type Compiler struct {
 	*codeWriter
 }
 
-func (c Compiler) compileBuiltinCall(call *ssa.Builtin, args []ssa.Value) {
-	switch call.Name() {
+func (c Compiler) compileBuiltinCall(fn *ssa.Builtin, args []ssa.Value) {
+	switch fn.Name() {
 	case "println":
 		c.writePrintln(args)
 	}
 }
 
-func (c Compiler) compileCall(call *ssa.Call) {
+func (c Compiler) compileCall(call *ssa.Call, stackVar string) {
+	c.writeVarDecl(stackVar, "")
+
 	cc := call.Common()
-	switch call := cc.Value.(type) {
+	switch fn := cc.Value.(type) {
 	case *ssa.Builtin:
-		c.compileBuiltinCall(call, cc.Args)
+		c.compileBuiltinCall(fn, cc.Args)
+	case *ssa.Function:
+		c.writeFunctionCall(fn.Name(), cc.Args)
 	}
 }
 
-func (c Compiler) compileUnaryOp(unop *ssa.UnOp, stackTop *int) {
+func (c Compiler) compileUnaryOp(unop *ssa.UnOp, stackVar string) {
 	x := c.coercedValue(unop.X)
 	var ass string
 	switch unop.Op {
@@ -38,10 +42,10 @@ func (c Compiler) compileUnaryOp(unop *ssa.UnOp, stackTop *int) {
 	default:
 	}
 
-	c.writeVarDecl(c.loadStackVar(stackTop), ass)
+	c.writeVarDecl(stackVar, ass)
 }
 
-func (c Compiler) compileBinaryOp(binop *ssa.BinOp, stackTop *int) {
+func (c Compiler) compileBinaryOp(binop *ssa.BinOp, stackVar string) {
 	x, y := c.value(binop.X), c.value(binop.Y)
 	var ass string
 	switch binop.Op {
@@ -50,17 +54,27 @@ func (c Compiler) compileBinaryOp(binop *ssa.BinOp, stackTop *int) {
 		ass = getCG(binop.X.Type()).coerce("(" + x + binop.Op.String() + y + ")")
 	}
 
-	c.writeVarDecl(c.loadStackVar(stackTop), ass)
+	c.writeVarDecl(stackVar, ass)
+}
+
+func (c Compiler) compileReturn(ins *ssa.Return) {
+	c.writeReturn(ins.Results)
 }
 
 func (c Compiler) compileInstruction(insI ssa.Instruction, stackTop *int) {
 	switch ins := insI.(type) {
 	case *ssa.Call:
-		c.compileCall(ins)
+		c.compileCall(ins, c.loadStackVar(stackTop))
 	case *ssa.UnOp:
-		c.compileUnaryOp(ins, stackTop)
+		c.compileUnaryOp(ins, c.loadStackVar(stackTop))
 	case *ssa.BinOp:
-		c.compileBinaryOp(ins, stackTop)
+		c.compileBinaryOp(ins, c.loadStackVar(stackTop))
+	case *ssa.Return:
+		c.writeReturn(ins.Results)
+	case *ssa.Store:
+		c.writeStore(ins.Addr, ins.Val)
+	case *ssa.Extract:
+		c.writeExtract(ins.Tuple.Name(), ins.Index, c.loadStackVar(stackTop))
 	default:
 		//fmt.Printf("Unhandled {%T, %v}\n", insI, insI.String())
 		return
@@ -94,7 +108,7 @@ func (c Compiler) compileGlobalDecl(gv *ssa.Global) {
 }
 
 func (c Compiler) Compile(prog *ssa.Program) {
-	funcClose := c.writeUniversalWrap()
+	funcClose := c.writePrelude()
 
 	for _, pkg := range prog.AllPackages() {
 		for _, memI := range pkg.Members {
