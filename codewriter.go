@@ -9,7 +9,15 @@ import (
 )
 
 type codeWriter struct {
-	w chan string
+	w        chan string
+	stackTop int
+}
+
+func newCodeWriter(w chan string) *codeWriter {
+	return &codeWriter{
+		w:        w,
+		stackTop: -1,
+	}
 }
 
 func (cw codeWriter) paramNames(params []*ssa.Parameter) string {
@@ -25,17 +33,22 @@ func (cw codeWriter) writeAssignment(lhs string, rhs string) {
 	cw.w <- fmt.Sprintf("%v = %v;", lhs, rhs)
 }
 
-func valueCode(cg valueCG, v ssa.Value) string {
-	name, isLiteral := valueName(v.Name())
+func (cw codeWriter) coercedValue(v ssa.Value) string {
+	name, isLiteral := parseValue(v.Name())
 	vstr := name
 	if !isLiteral {
-		return cg.coerce(vstr)
+		return getCG(v.Type()).coerce(vstr)
 	}
 
 	return vstr
 }
 
-func valueName(name string) (string, bool) {
+func (cw codeWriter) value(v ssa.Value) string {
+	name, _ := parseValue(v.Name())
+	return name
+}
+
+func parseValue(name string) (string, bool) {
 	spl := strings.Split(name, ":")
 	return spl[0], len(spl) > 1
 }
@@ -58,13 +71,9 @@ func (cw codeWriter) writeBC() {
 	cw.w <- "}"
 }
 
-func (cw codeWriter) writeValue(v ssa.Value) {
-	cw.w <- valueCode(getCG(v.Type()), v)
-}
-
 func (cw codeWriter) writeArgs(args []ssa.Value) {
 	for _, arg := range args {
-		cw.writeValue(arg)
+		cw.w <- cw.value(arg)
 	}
 }
 
@@ -77,17 +86,33 @@ func (cw codeWriter) writePrintln(args []ssa.Value) {
 func (cw codeWriter) writeUniversalWrap() func() {
 	cw.w <- "(function() {"
 	return func() {
-		cw.w <- "\nmain()})()"
+		cw.w <- "\ninit(); main()})()"
 	}
 }
 
-func (cw codeWriter) writeVarDecl(name string, typ types.Type, v ssa.Value) {
-	cw.w <- fmt.Sprintf("var %v = ", name)
-	vg := getCG(typ)
-	if v != nil {
-		cw.w <- valueCode(getCG(typ), v)
-	} else {
-		cw.w <- vg.initialValue()
-	}
+func (cw codeWriter) writeSC() {
 	cw.w <- ";"
+}
+
+func (cw codeWriter) initialValue(typ types.Type) string {
+	vg := getCG(typ)
+	return vg.initialValue()
+}
+
+func (cw codeWriter) writeVarDecl(name, value string) {
+	cw.w <- fmt.Sprintf("var %v = %v", name, value)
+}
+
+func (cw codeWriter) pointerDeref(pointerValue string, elemType types.Type) string {
+	deref := fmt.Sprintf("%v[0]", pointerValue)
+	return getCG(elemType).coerce(deref)
+}
+
+func (cw codeWriter) write(code string) {
+	cw.w <- code
+}
+
+func (cw *codeWriter) loadStackVar(stackTop *int) string {
+	*stackTop++
+	return fmt.Sprintf("t%v", *stackTop)
 }

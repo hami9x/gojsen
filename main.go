@@ -28,13 +28,13 @@ func main() {
 		panic(err)
 	}
 
-	prog := ssa.Create(lprog, ssa.NaiveForm)
+	prog := ssa.Create(lprog, 0)
 	prog.BuildAll()
 
 	ow := newOutputWriter(outw)
 	ow.Start()
 
-	codeWriter := &codeWriter{ow.codeChan}
+	codeWriter := newCodeWriter(ow.codeChan)
 	compiler := &Compiler{codeWriter}
 	compiler.Compile(prog)
 

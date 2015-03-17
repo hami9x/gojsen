@@ -9,6 +9,7 @@ func f() int {
 
 func main() {
 	b = false
+	z := v
 	a := 0
-	println(a + v)
+	println(a + v + z)
 }
