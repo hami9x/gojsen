@@ -34,7 +34,7 @@ func (c intCG) initialValue() string {
 type boolCG struct{}
 
 func (c boolCG) coerce(name string) string {
-	return name + "&&true"
+	return name
 }
 
 func (c boolCG) initialValue() string {

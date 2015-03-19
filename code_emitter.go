@@ -9,11 +9,11 @@ import (
 )
 
 type codeEmitter struct {
-	w        chan string
+	w        chan *codeNode
 	stackTop int
 }
 
-func newCodeEmitter(w chan string) *codeEmitter {
+func newCodeEmitter(w chan *codeNode) *codeEmitter {
 	return &codeEmitter{
 		w:        w,
 		stackTop: -1,
@@ -30,7 +30,7 @@ func (cw codeEmitter) paramNames(params []*ssa.Parameter) string {
 }
 
 func (cw codeEmitter) assignment(lhs string, rhs string) string {
-	return fmt.Sprintf("%v = %v;", lhs, rhs)
+	return fmt.Sprintf("%v = %v", lhs, rhs)
 }
 
 func (cw codeEmitter) coercedValue(v ssa.Value) string {
@@ -117,41 +117,42 @@ func (cw codeEmitter) varStore(addr, value ssa.Value) string {
 
 func (cw *codeEmitter) loadStackVar(stackTop *int) string {
 	*stackTop++
-	return fmt.Sprintf("t%v", *stackTop)
+	return fmt.Sprintf("$%v", *stackTop)
 }
 
-func (cw codeEmitter) write(code string) {
+func (cw codeEmitter) write(code string, typ cnType) {
 	if code != "" {
-		cw.w <- code
+		cw.w <- &codeNode{code, typ}
 	}
 }
 
 func (cw codeEmitter) writePrelude() func() {
-	cw.w <- "(function() {"
-	cw.w <- Prelude
+	cw.write("(function() {", BlockOpen)
+	cw.write(Prelude, Normal)
 	return func() {
-		cw.w <- "\ninit(); main()})()"
+		cw.write("\ninit(); main()})()", BlockClose)
 	}
 }
 
 func (cw codeEmitter) writeSC() {
-	cw.w <- ";"
+	cw.write(EndStatement, Normal)
 }
 
 func (cw codeEmitter) writeFuncDecl(fn *ssa.Function) func() {
-	cw.w <- fmt.Sprintf("function %v(%v) {",
+	cw.write(fmt.Sprintf("function %v(%v) {",
 		fn.Name(),
-		cw.paramNames(fn.Params))
+		cw.paramNames(fn.Params)), BlockOpen)
 
 	for _, param := range fn.Params {
 		pn := param.Name()
 		cg := getCG(param.Type())
-		cw.write(cw.assignment(pn, cg.coerce(pn)))
+		cw.write(cw.assignment(pn, cg.coerce(pn)), Normal)
+		cw.writeSC()
 	}
 
 	return cw.writeBC
 }
 
 func (cw codeEmitter) writeBC() {
-	cw.w <- "}"
+	cw.write("}", BlockClose)
 }

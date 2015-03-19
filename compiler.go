@@ -15,19 +15,18 @@ type Compiler struct {
 func (c Compiler) compileBuiltinCall(fn *ssa.Builtin, args []ssa.Value) {
 	switch fn.Name() {
 	case "println":
-		c.e.write(c.e.stdPrintln(args))
+		c.e.write(c.e.stdPrintln(args), Normal)
 	}
 }
 
 func (c Compiler) compileCall(call *ssa.Call, stackVar string) {
-	c.e.write(c.e.varDecl(stackVar, ""))
 
 	cc := call.Common()
 	switch fn := cc.Value.(type) {
 	case *ssa.Builtin:
 		c.compileBuiltinCall(fn, cc.Args)
 	case *ssa.Function:
-		c.e.write(c.e.functionCall(fn.Name(), cc.Args))
+		c.e.write(c.e.varDecl(stackVar, "")+c.e.functionCall(fn.Name(), cc.Args), Normal)
 	}
 }
 
@@ -42,23 +41,24 @@ func (c Compiler) compileUnaryOp(unop *ssa.UnOp, stackVar string) {
 	default:
 	}
 
-	c.e.write(c.e.varDecl(stackVar, ass))
+	c.e.write(c.e.varDecl(stackVar, ass), Normal)
 }
 
 func (c Compiler) compileBinaryOp(binop *ssa.BinOp, stackVar string) {
 	x, y := c.e.value(binop.X), c.e.value(binop.Y)
 	var ass string
 	switch binop.Op {
-	case token.ADD, token.MUL, token.SUB, token.QUO, token.REM,
-		token.EQL, token.LSS, token.GTR, token.NEQ, token.LEQ, token.GEQ:
+	case token.ADD, token.MUL, token.SUB, token.QUO, token.REM:
 		ass = getCG(binop.X.Type()).coerce("(" + x + binop.Op.String() + y + ")")
+	case token.EQL, token.LSS, token.GTR, token.NEQ, token.LEQ, token.GEQ:
+		ass = x + binop.Op.String() + y
 	}
 
-	c.e.write(c.e.varDecl(stackVar, ass))
+	c.e.write(c.e.varDecl(stackVar, ass), Normal)
 }
 
 func (c Compiler) compileReturn(ins *ssa.Return) {
-	c.e.write(c.e.functionReturn(ins.Results))
+	c.e.write(c.e.functionReturn(ins.Results), Normal)
 }
 
 func (c Compiler) compileInstruction(insI ssa.Instruction, stackTop *int) {
@@ -70,11 +70,11 @@ func (c Compiler) compileInstruction(insI ssa.Instruction, stackTop *int) {
 	case *ssa.BinOp:
 		c.compileBinaryOp(ins, c.e.loadStackVar(stackTop))
 	case *ssa.Return:
-		c.e.write(c.e.functionReturn(ins.Results))
+		c.e.write(c.e.functionReturn(ins.Results), Normal)
 	case *ssa.Store:
-		c.e.write(c.e.varStore(ins.Addr, ins.Val))
+		c.e.write(c.e.varStore(ins.Addr, ins.Val), Normal)
 	case *ssa.Extract:
-		c.e.write(c.e.extraction(ins.Tuple.Name(), ins.Index, c.e.loadStackVar(stackTop)))
+		c.e.write(c.e.extraction(ins.Tuple.Name(), ins.Index, c.e.loadStackVar(stackTop)), Normal)
 	default:
 		//fmt.Printf("Unhandled {%T, %v}\n", insI, insI.String())
 		return
@@ -102,7 +102,7 @@ func (c Compiler) compileFunctionDecl(fn *ssa.Function) {
 }
 
 func (c Compiler) compileGlobalDecl(gv *ssa.Global) {
-	c.e.write(c.e.varDecl(gv.Name(), c.e.initialValue(gv.Type())))
+	c.e.write(c.e.varDecl(gv.Name(), c.e.initialValue(gv.Type())), Normal)
 	c.e.writeSC()
 }
 

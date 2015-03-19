@@ -7,33 +7,72 @@ import (
 	"os/exec"
 )
 
+type cnType string
+
+const (
+	Normal     cnType = "Normal"
+	BlockOpen         = "BlockOpen"
+	BlockClose        = "BlockClose"
+)
+
+const (
+	TabStr       = "  "
+	EndStatement = ";\n"
+)
+
+type codeNode struct {
+	code string
+	typ  cnType
+}
+
 type outputWriter struct {
 	w        io.Writer
 	finished chan bool
-	codeChan chan string
+	codeChan chan *codeNode
 }
 
 func newOutputWriter(w io.Writer) outputWriter {
 	return outputWriter{
 		w:        w,
 		finished: make(chan bool),
-		codeChan: make(chan string, 1000),
+		codeChan: make(chan *codeNode, 200),
 	}
 }
 
 func (ow outputWriter) Start() {
 	go func() {
+		tabs := []rune{}
+		spaceRune := []rune("      ")
+		indent := 0
 		for {
-			s := <-ow.codeChan
-			//println(s)
-			if s == "" {
+			cn := <-ow.codeChan
+			if cn == nil {
 				break
 			}
 
-			ow.w.Write([]byte(s))
+			if cn.typ == BlockClose {
+				indent--
+			}
+
+			indentation := string(tabs[0 : indent*len(TabStr)])
+
+			if cn.code == EndStatement {
+				ow.w.Write([]byte(cn.code))
+			} else {
+				ow.w.Write([]byte(indentation + cn.code))
+				if cn.typ != Normal {
+					ow.w.Write([]byte("\n"))
+				}
+			}
+
+			if cn.typ == BlockOpen {
+				indent++
+				if indent*len(TabStr) > len(tabs) {
+					tabs = append(tabs, spaceRune...)
+				}
+			}
 		}
 
-		println("OUT >>>")
 		ow.finished <- true
 	}()
 }
