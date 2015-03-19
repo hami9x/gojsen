@@ -34,8 +34,8 @@ func main() {
 	ow := newOutputWriter(outw)
 	ow.Start()
 
-	codeWriter := newCodeWriter(ow.codeChan)
-	compiler := &Compiler{codeWriter}
+	codeEmitter := newCodeEmitter(ow.codeChan)
+	compiler := &Compiler{codeEmitter}
 	compiler.Compile(prog)
 
 	ow.Close(testOut, outw)

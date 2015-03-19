@@ -17,7 +17,7 @@ func newOutputWriter(w io.Writer) outputWriter {
 	return outputWriter{
 		w:        w,
 		finished: make(chan bool),
-		codeChan: make(chan string),
+		codeChan: make(chan string, 1000),
 	}
 }
 
@@ -25,6 +25,7 @@ func (ow outputWriter) Start() {
 	go func() {
 		for {
 			s := <-ow.codeChan
+			//println(s)
 			if s == "" {
 				break
 			}
@@ -32,6 +33,7 @@ func (ow outputWriter) Start() {
 			ow.w.Write([]byte(s))
 		}
 
+		println("OUT >>>")
 		ow.finished <- true
 	}()
 }
