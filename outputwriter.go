@@ -16,7 +16,7 @@ const (
 )
 
 const (
-	TabStr       = "  "
+	TabStr       = "    "
 	EndStatement = ";\n"
 )
 
@@ -56,13 +56,10 @@ func (ow outputWriter) Start() {
 
 			indentation := string(tabs[0 : indent*len(TabStr)])
 
-			if cn.code == EndStatement {
-				ow.w.Write([]byte(cn.code))
-			} else {
-				ow.w.Write([]byte(indentation + cn.code))
-				if cn.typ != Normal {
-					ow.w.Write([]byte("\n"))
-				}
+			ow.w.Write([]byte(indentation + cn.code))
+			ow.w.Write([]byte("\n"))
+			if cn.typ == BlockClose {
+				ow.w.Write([]byte("\n"))
 			}
 
 			if cn.typ == BlockOpen {

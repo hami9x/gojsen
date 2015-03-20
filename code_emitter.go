@@ -76,6 +76,9 @@ func (cw codeEmitter) initialValue(typ types.Type) string {
 }
 
 func (cw codeEmitter) varDecl(name, value string) string {
+	if value == "" {
+		return "var " + name + " "
+	}
 	return fmt.Sprintf("var %v = %v", name, value)
 }
 
@@ -88,9 +91,9 @@ func (cw codeEmitter) pointerDeref(pointerValue string, elemType types.Type) str
 	return getCG(elemType).coerce(deref)
 }
 
-func (cw codeEmitter) functionReturn(returns []ssa.Value) string {
+func (cw codeEmitter) returnIns(returns []ssa.Value) string {
 	if len(returns) == 0 {
-		return ""
+		return "return"
 	}
 
 	s := ""
@@ -101,15 +104,18 @@ func (cw codeEmitter) functionReturn(returns []ssa.Value) string {
 	return s + fmt.Sprintf("return %v", TupleVar)
 }
 
-func (cw codeEmitter) functionCall(name string, args []ssa.Value) string {
-	return name + "(" + cw.args(args, true) + ")"
+func (cw codeEmitter) functionCall(stackVar string, name string, args []ssa.Value) string {
+	return cw.varDecl(stackVar, name+"("+cw.args(args, true)+")")
 }
 
-func (cw codeEmitter) extraction(name string, index int, stackVar string) string {
-	return cw.varDecl(stackVar, fmt.Sprintf("%v[%v]", name, index))
+func (cw codeEmitter) extractionIns(v ssa.Value, index int, stackVar string) string {
+	t := v.Type().(*types.Tuple).At(index).Type()
+	return cw.varDecl(stackVar,
+		getCG(t).coerce(
+			fmt.Sprintf("%v[%v]", v.Name(), index)))
 }
 
-func (cw codeEmitter) varStore(addr, value ssa.Value) string {
+func (cw codeEmitter) storeIns(addr, value ssa.Value) string {
 	return cw.assignment(
 		cw.pointerDeref(addr.Name(), nil),
 		cw.coercedValue(value))
@@ -117,13 +123,11 @@ func (cw codeEmitter) varStore(addr, value ssa.Value) string {
 
 func (cw *codeEmitter) loadStackVar(stackTop *int) string {
 	*stackTop++
-	return fmt.Sprintf("$%v", *stackTop)
+	return fmt.Sprintf("t%v", *stackTop)
 }
 
 func (cw codeEmitter) write(code string, typ cnType) {
-	if code != "" {
-		cw.w <- &codeNode{code, typ}
-	}
+	cw.w <- &codeNode{code, typ}
 }
 
 func (cw codeEmitter) writePrelude() func() {
@@ -132,10 +136,6 @@ func (cw codeEmitter) writePrelude() func() {
 	return func() {
 		cw.write("\ninit(); main()})()", BlockClose)
 	}
-}
-
-func (cw codeEmitter) writeSC() {
-	cw.write(EndStatement, Normal)
 }
 
 func (cw codeEmitter) writeFuncDecl(fn *ssa.Function) func() {
@@ -147,12 +147,52 @@ func (cw codeEmitter) writeFuncDecl(fn *ssa.Function) func() {
 		pn := param.Name()
 		cg := getCG(param.Type())
 		cw.write(cw.assignment(pn, cg.coerce(pn)), Normal)
-		cw.writeSC()
 	}
 
 	return cw.writeBC
 }
 
+func (cw codeEmitter) writeExecLoop() func() {
+	cw.write("var $l = 0, $p = 0", Normal)
+	cw.write("while (1) switch($l) {", BlockOpen)
+	return cw.writeBC
+}
+
+func (cw codeEmitter) writeCase(i int, last bool) func() {
+	cw.write(fmt.Sprintf("case %v:", i), BlockOpen)
+	return func() {
+		if !last {
+			cw.write(fmt.Sprintf("$l = %v; $p = %v; break;",
+				i+1, i), BlockClose)
+		} else {
+			cw.write("", BlockClose)
+		}
+	}
+}
+
+func (cw codeEmitter) ifIns(s *ssa.If) string {
+	tblock := s.Block().Succs[0].Index
+	fblock := s.Block().Succs[1].Index
+
+	return fmt.Sprintf("$l = (%v) ? %v : %v; break",
+		s.Cond.Name(), tblock, fblock)
+}
+
+func (cw codeEmitter) jumpIns(ins *ssa.Jump) string {
+	return fmt.Sprintf("$l = %v; $p = %v; break;",
+		ins.Block().Succs[0].Index, ins.Block().Index)
+}
+
 func (cw codeEmitter) writeBC() {
 	cw.write("}", BlockClose)
+}
+
+func (cw codeEmitter) writePhiIns(ins *ssa.Phi, stackVar string) {
+	preds := ins.Block().Preds
+	cw.write(fmt.Sprintf("var %v; switch($p) {", stackVar), BlockOpen)
+	for i, edge := range ins.Edges {
+		cw.write(fmt.Sprintf("case %v: %v = %v; break;",
+			preds[i].Index, stackVar, cw.value(edge)), Normal)
+	}
+	cw.writeBC()
 }

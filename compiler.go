@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"go/token"
 
 	"golang.org/x/tools/go/ssa"
@@ -26,7 +25,7 @@ func (c Compiler) compileCall(call *ssa.Call, stackVar string) {
 	case *ssa.Builtin:
 		c.compileBuiltinCall(fn, cc.Args)
 	case *ssa.Function:
-		c.e.write(c.e.varDecl(stackVar, "")+c.e.functionCall(fn.Name(), cc.Args), Normal)
+		c.e.write(c.e.functionCall(stackVar, fn.Name(), cc.Args), Normal)
 	}
 }
 
@@ -57,10 +56,6 @@ func (c Compiler) compileBinaryOp(binop *ssa.BinOp, stackVar string) {
 	c.e.write(c.e.varDecl(stackVar, ass), Normal)
 }
 
-func (c Compiler) compileReturn(ins *ssa.Return) {
-	c.e.write(c.e.functionReturn(ins.Results), Normal)
-}
-
 func (c Compiler) compileInstruction(insI ssa.Instruction, stackTop *int) {
 	switch ins := insI.(type) {
 	case *ssa.Call:
@@ -70,44 +65,66 @@ func (c Compiler) compileInstruction(insI ssa.Instruction, stackTop *int) {
 	case *ssa.BinOp:
 		c.compileBinaryOp(ins, c.e.loadStackVar(stackTop))
 	case *ssa.Return:
-		c.e.write(c.e.functionReturn(ins.Results), Normal)
+		c.e.write(c.e.returnIns(ins.Results), Normal)
 	case *ssa.Store:
-		c.e.write(c.e.varStore(ins.Addr, ins.Val), Normal)
+		c.e.write(c.e.storeIns(ins.Addr, ins.Val), Normal)
 	case *ssa.Extract:
-		c.e.write(c.e.extraction(ins.Tuple.Name(), ins.Index, c.e.loadStackVar(stackTop)), Normal)
+		c.e.write(c.e.extractionIns(ins.Tuple, ins.Index, c.e.loadStackVar(stackTop)), Normal)
+	case *ssa.If:
+		c.e.write(c.e.ifIns(ins), BlockClose)
+	case *ssa.Jump:
+		c.e.write(c.e.jumpIns(ins), BlockClose)
+	case *ssa.Phi:
+		c.e.writePhiIns(ins, c.e.loadStackVar(stackTop))
 	default:
 		//fmt.Printf("Unhandled {%T, %v}\n", insI, insI.String())
 		return
 	}
+}
 
-	c.e.writeSC()
+func (c Compiler) compileBlock(blk *ssa.BasicBlock, stackTop *int) {
+	for _, ins := range blk.Instrs {
+		c.compileInstruction(ins, stackTop)
+		fmt.Printf("{%T, %v}\n", ins, ins.String())
+	}
 }
 
 func (c Compiler) compileFunctionDecl(fn *ssa.Function) {
 	funcClose := c.e.writeFuncDecl(fn)
+	defer funcClose()
 
 	stackTop := -1
-	i := 0
-	for i < len(fn.Blocks) {
-		blk := fn.Blocks[i]
-		for _, ins := range blk.Instrs {
-			c.compileInstruction(ins, &stackTop)
-			fmt.Printf("{%T, %v}\n", ins, ins.String())
-		}
-
-		i++
+	if len(fn.Blocks) == 1 {
+		c.compileBlock(fn.Blocks[0], &stackTop)
+		return
 	}
 
-	funcClose()
+	elClose := c.e.writeExecLoop()
+	defer elClose()
+
+	for i, blk := range fn.Blocks {
+		caseClose := c.e.writeCase(i, i == len(fn.Blocks)-1)
+		c.compileBlock(blk, &stackTop)
+		ins := blk.Instrs
+		if len(ins) > 0 {
+			switch ins[len(blk.Instrs)-1].(type) {
+			case *ssa.Jump, *ssa.If: // do nothing
+			case *ssa.Return:
+				c.e.write("", BlockClose)
+			default:
+				caseClose()
+			}
+		}
+	}
 }
 
 func (c Compiler) compileGlobalDecl(gv *ssa.Global) {
 	c.e.write(c.e.varDecl(gv.Name(), c.e.initialValue(gv.Type())), Normal)
-	c.e.writeSC()
 }
 
 func (c Compiler) Compile(prog *ssa.Program) {
 	funcClose := c.e.writePrelude()
+	defer funcClose()
 
 	for _, pkg := range prog.AllPackages() {
 		for _, memI := range pkg.Members {
@@ -119,6 +136,4 @@ func (c Compiler) Compile(prog *ssa.Program) {
 			}
 		}
 	}
-
-	funcClose()
 }

@@ -9,7 +9,7 @@ func f(a int) (int, int) {
 func main() {
 	v = 5
 	z, a := f(v)
-	if v == 9 {
+	for v == 9 {
 		a = 6
 	}
 	println(a + v + z)
