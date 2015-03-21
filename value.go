@@ -6,6 +6,14 @@ import (
 	"golang.org/x/tools/go/types"
 )
 
+const (
+	SafePrefix = "_"
+)
+
+func sfPrefix(name string) string {
+	return SafePrefix + name
+}
+
 type valueCG interface {
 	coerce(name string) string
 	initialValue() string
@@ -55,6 +63,16 @@ func (c pointerCG) initialValue() string {
 	return fmt.Sprintf("[%v]", elemInit)
 }
 
+type nopCG struct{}
+
+func (c nopCG) coerce(name string) string {
+	return name
+}
+
+func (c nopCG) initialValue() string {
+	return "null"
+}
+
 func getCG(typ types.Type) valueCG {
 	switch t := typ.(type) {
 	case *types.Basic:
@@ -71,6 +89,6 @@ func getCG(typ types.Type) valueCG {
 		return pointerCG{t}
 	}
 
-	panic("Unhandled type " + typ.String())
-	return nil
+	println(fmt.Sprintf("Unhandled type %v", typ.String()))
+	return nopCG{}
 }

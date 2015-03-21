@@ -1,5 +1,8 @@
 package main
 
+import "github.com/phaikawl/null"
+import n "github.com/phaikawl/null/null"
+
 var v int
 
 func f(a int) (int, int) {
@@ -13,4 +16,6 @@ func main() {
 		a = 6
 	}
 	println(a + v + z)
+	null.Test()
+	n.Test()
 }

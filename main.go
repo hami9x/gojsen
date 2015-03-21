@@ -35,7 +35,7 @@ func main() {
 	ow.Start()
 
 	codeEmitter := newCodeEmitter(ow.codeChan)
-	compiler := &Compiler{codeEmitter}
+	compiler := NewCompiler(codeEmitter)
 	compiler.Compile(prog)
 
 	ow.Close(testOut, outw)
