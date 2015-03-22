@@ -7,17 +7,22 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-const testFile = "test/test.go"
-const testOut = "test/test.js"
+const TestFile = "test/test.go"
 
 func main() {
-	outw, err := os.Create(testOut)
+	file := TestFile
+	if len(os.Args) > 1 {
+		file = os.Args[1]
+	}
+	outFile := file + ".js"
+
+	outw, err := os.Create(outFile)
 	if err != nil {
 		panic(err)
 	}
 
 	var conf loader.Config
-	af, err := conf.ParseFile(testFile, nil)
+	af, err := conf.ParseFile(file, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -38,5 +43,5 @@ func main() {
 	compiler := NewCompiler(codeEmitter)
 	compiler.Compile(prog)
 
-	ow.Close(testOut, outw)
+	ow.Close(outFile, outw)
 }
