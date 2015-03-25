@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types"
 )
 
@@ -12,6 +13,47 @@ const (
 
 func sfPrefix(name string) string {
 	return SafePrefix + name
+}
+
+func constValue(v ssa.Value) string {
+	nr := []rune(v.Name())
+
+	i := len(nr) - 1
+	for ; i > 0 && nr[i] != ':'; i-- {
+	}
+
+	if i == 0 {
+		return v.Name()
+	}
+
+	return string(nr[0:i])
+}
+
+func value(v ssa.Value, noCoerce bool) string {
+	switch v := v.(type) {
+	case nil:
+		return "nil"
+	case *ssa.Function, *ssa.Builtin:
+		return sfPrefix(v.Name())
+	case *ssa.Const:
+		return constValue(v)
+	case *ssa.Global, *ssa.Parameter:
+		if !noCoerce {
+			return sfPrefix(coerced(v))
+		}
+
+		return sfPrefix(v.Name())
+	}
+
+	if noCoerce {
+		return v.Name()
+	}
+
+	return coerced(v)
+}
+
+func coerced(key ssa.Value) string {
+	return getCG(key.Type()).coerce(key.Name())
 }
 
 type valueCG interface {
@@ -42,7 +84,7 @@ func (c intCG) initialValue() string {
 type boolCG struct{}
 
 func (c boolCG) coerce(name string) string {
-	return name
+	return "!!" + name
 }
 
 func (c boolCG) initialValue() string {

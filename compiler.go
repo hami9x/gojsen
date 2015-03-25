@@ -23,14 +23,14 @@ func NewCompiler(e *codeEmitter) *Compiler {
 	}
 }
 
-func (c Compiler) compileBuiltinCall(fn *ssa.Builtin, args []ssa.Value, s *stack) {
+func (c Compiler) compileBuiltinCall(fn *ssa.Builtin, args []ssa.Value, s *frame) {
 	switch fn.Name() {
 	case "println":
 		c.e.write(s.VarDecl(c.e.stdPrintln(args)), Normal)
 	}
 }
 
-func (c Compiler) compileCall(call *ssa.Call, s *stack) {
+func (c Compiler) compileCall(call *ssa.Call, s *frame) {
 	cc := call.Common()
 	switch fn := cc.Value.(type) {
 	case *ssa.Builtin:
@@ -40,8 +40,8 @@ func (c Compiler) compileCall(call *ssa.Call, s *stack) {
 	}
 }
 
-func (c Compiler) compileUnaryOp(unop *ssa.UnOp, s *stack) {
-	x := c.e.value(unop.X, true)
+func (c Compiler) compileUnaryOp(unop *ssa.UnOp, s *frame) {
+	x := value(unop.X, false)
 	var ass string
 	switch unop.Op {
 	case token.MUL:
@@ -54,8 +54,8 @@ func (c Compiler) compileUnaryOp(unop *ssa.UnOp, s *stack) {
 	c.e.write(s.VarDecl(ass), Normal)
 }
 
-func (c Compiler) compileBinaryOp(binop *ssa.BinOp, s *stack) {
-	x, y := c.e.value(binop.X, false), c.e.value(binop.Y, false)
+func (c Compiler) compileBinaryOp(binop *ssa.BinOp, s *frame) {
+	x, y := value(binop.X, true), value(binop.Y, true)
 	var ass string
 	switch binop.Op {
 	case token.ADD, token.MUL, token.SUB, token.QUO, token.REM:
@@ -67,7 +67,7 @@ func (c Compiler) compileBinaryOp(binop *ssa.BinOp, s *stack) {
 	c.e.write(s.VarDecl(ass), Normal)
 }
 
-func (c Compiler) compileInstruction(insI ssa.Instruction, s *stack) {
+func (c Compiler) compileInstruction(insI ssa.Instruction, s *frame) {
 	switch ins := insI.(type) {
 	case *ssa.Call:
 		c.compileCall(ins, s)
@@ -93,7 +93,7 @@ func (c Compiler) compileInstruction(insI ssa.Instruction, s *stack) {
 	}
 }
 
-func (c Compiler) compileBlock(blk *ssa.BasicBlock, s *stack) {
+func (c Compiler) compileBlock(blk *ssa.BasicBlock, s *frame) {
 	for _, ins := range blk.Instrs {
 		c.compileInstruction(ins, s)
 		fmt.Printf("{%T, %v}\n", ins, ins.String())
@@ -104,7 +104,7 @@ func (c Compiler) compileFunctionDecl(fn *ssa.Function) {
 	funcClose := c.e.writeFuncDecl(fn)
 	defer funcClose()
 
-	s := newStack(fn.Package(), c.pkgMap)
+	s := newFrame(fn.Package(), c.pkgMap)
 
 	if len(fn.Blocks) == 1 {
 		c.compileBlock(fn.Blocks[0], s)

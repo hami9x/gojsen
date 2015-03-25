@@ -10,13 +10,13 @@ import (
 
 type codeEmitter struct {
 	w        chan *codeNode
-	stackTop int
+	frameTop int
 }
 
 func newCodeEmitter(w chan *codeNode) *codeEmitter {
 	return &codeEmitter{
 		w:        w,
-		stackTop: -1,
+		frameTop: -1,
 	}
 }
 
@@ -33,42 +33,10 @@ func (cw codeEmitter) assignment(lhs string, rhs string) string {
 	return fmt.Sprintf("%v = %v", lhs, rhs)
 }
 
-func (cw codeEmitter) value(v ssa.Value, coerce bool) string {
-	name, isLiteral := parseValue(v.Name())
-
-	if !isLiteral {
-		if !isStackVar(name) {
-			name = sfPrefix(name)
-		}
-
-		if !coerce {
-			return name
-		}
-
-		return getCG(v.Type()).coerce(name)
-	}
-
-	return name
-}
-
-func parseValue(name string) (string, bool) {
-	nr := []rune(name)
-
-	i := len(nr) - 1
-	for ; i > 0 && nr[i] != ':'; i-- {
-	}
-
-	if i == 0 {
-		return name, false
-	}
-
-	return string(nr[0:i]), true
-}
-
 func (cw codeEmitter) args(args []ssa.Value) string {
 	s := ""
 	for _, arg := range args {
-		s += cw.value(arg, true)
+		s += value(arg, true)
 	}
 
 	return s
@@ -106,26 +74,26 @@ func (cw codeEmitter) returnIns(returns []ssa.Value) string {
 
 	s := ""
 	for i, v := range returns {
-		s += fmt.Sprintf("%v[%v] = %v; ", TupleVar, i, cw.value(v, true))
+		s += fmt.Sprintf("%v[%v] = %v; ", TupleVar, i, value(v, false))
 	}
 
 	return s + fmt.Sprintf("return %v", TupleVar)
 }
 
-func (cw codeEmitter) functionCall(s *stack, name string, args []ssa.Value) string {
+func (cw codeEmitter) functionCall(s *frame, name string, args []ssa.Value) string {
 	return s.VarDecl(sfPrefix(name) + "(" + cw.args(args) + ")")
 }
 
-func (cw codeEmitter) extractionIns(v ssa.Value, index int, s *stack) string {
+func (cw codeEmitter) extractionIns(v ssa.Value, index int, s *frame) string {
 	t := v.Type().(*types.Tuple).At(index).Type()
 	return s.VarDecl(getCG(t).coerce(
 		fmt.Sprintf("%v[%v]", v.Name(), index)))
 }
 
-func (cw codeEmitter) storeIns(addr, value ssa.Value) string {
+func (cw codeEmitter) storeIns(addr, v ssa.Value) string {
 	return cw.assignment(
 		cw.pointerDeref(sfPrefix(addr.Name()), nil),
-		cw.value(value, true))
+		value(v, false))
 }
 
 func (cw codeEmitter) write(code string, typ cnType) {
@@ -210,12 +178,12 @@ func (cw codeEmitter) writeBC() {
 	cw.write("}", BlockClose)
 }
 
-func (cw codeEmitter) writePhiIns(ins *ssa.Phi, stackVar string) {
+func (cw codeEmitter) writePhiIns(ins *ssa.Phi, frameVar string) {
 	preds := ins.Block().Preds
-	cw.write(fmt.Sprintf("var %v; switch($p) {", stackVar), BlockOpen)
+	cw.write(fmt.Sprintf("var %v; switch($p) {", frameVar), BlockOpen)
 	for i, edge := range ins.Edges {
 		cw.write(fmt.Sprintf("case %v: %v = %v; break;",
-			preds[i].Index, stackVar, cw.value(edge, true)), Normal)
+			preds[i].Index, frameVar, value(edge, false)), Normal)
 	}
 	cw.writeBC()
 }
